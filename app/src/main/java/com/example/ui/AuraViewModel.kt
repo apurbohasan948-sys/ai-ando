@@ -100,6 +100,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private val _isAuthModalVisible = MutableStateFlow(false)
     val isAuthModalVisible: StateFlow<Boolean> = _isAuthModalVisible.asStateFlow()
 
+    // Autonomous Facebook Web Automation Agent state
+    private val _isAutoAgentActive = MutableStateFlow(false)
+    val isAutoAgentActive: StateFlow<Boolean> = _isAutoAgentActive.asStateFlow()
+
     val isListening: StateFlow<Boolean> = speechManager.isListening
     val selectedLanguage: StateFlow<String> = speechManager.selectedLanguage
 
@@ -354,6 +358,80 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             memoryStore.deleteRule(rule)
             logEvent("SELF_MEMORY", "Rule deleted: ${rule.ruleTitle}")
         }
+    }
+
+    fun toggleAutoAgent() {
+        _isAutoAgentActive.value = !_isAutoAgentActive.value
+        val stateMsg = if (_isAutoAgentActive.value) "Autonomous Web Agent Activated" else "Autonomous Web Agent Deactivated"
+        logEvent("GEMINI_AI", stateMsg)
+        addChatMessage("AURA", stateMsg)
+    }
+
+    fun triggerFbAutoReply(replyText: String = "Hello! Aura AI automated response.") {
+        val safeText = replyText.replace("'", "\\'").replace("\n", " ")
+        val js = """
+            (function() {
+                var inputBox = document.querySelector('div[contenteditable="true"][role="textbox"], textarea[name="body"], input[type="text"][name="body"], div[aria-label="Message"], div[aria-label="মেসেজ"]');
+                var sendBtn = document.querySelector('div[aria-label="Send"], button[type="submit"], div[role="button"][aria-label="পাঠান"], div[aria-label="Press enter to send"]');
+                if (inputBox) {
+                    inputBox.focus();
+                    document.execCommand('insertText', false, '$safeText');
+                    if (sendBtn) { sendBtn.click(); }
+                    AuraBridge.onDataExtracted('FB Message auto-reply sent: $safeText');
+                } else {
+                    AuraBridge.onDataExtracted('No open Facebook chat window found. Please open a chat first.');
+                }
+            })();
+        """.trimIndent()
+        evaluateJavaScript(js)
+        logEvent("WEBVIEW_BRIDGE", "Triggered Facebook Auto-Reply")
+        addChatMessage("AURA", "Sending auto-reply in Facebook chat: \"$safeText\"")
+    }
+
+    fun triggerFbGroupPost(postText: String) {
+        val safeText = postText.replace("'", "\\'").replace("\n", "\\n")
+        val js = """
+            (function() {
+                var postBox = document.querySelector('div[role="button"][aria-label*="Create"], div[role="button"][aria-label*="Write something"], div[role="button"][aria-label*="পোস্ট"]') || document.querySelector('div[contenteditable="true"]');
+                if (postBox) {
+                    postBox.click();
+                    setTimeout(function() {
+                        var editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
+                        if (editor) {
+                            editor.focus();
+                            document.execCommand('insertText', false, '$safeText');
+                            AuraBridge.onDataExtracted('Group post text written.');
+                        } else {
+                            AuraBridge.onDataExtracted('Editor opened in group.');
+                        }
+                    }, 1000);
+                } else {
+                    AuraBridge.onDataExtracted('Please open a Facebook group page to post.');
+                }
+            })();
+        """.trimIndent()
+        evaluateJavaScript(js)
+        logEvent("WEBVIEW_BRIDGE", "Triggered FB Group Auto-Post")
+        addChatMessage("AURA", "Creating automated Facebook group post...")
+    }
+
+    fun triggerFbAutoInvite() {
+        val js = """
+            (function() {
+                var btns = Array.from(document.querySelectorAll('div[role="button"][aria-label*="Invite"], div[role="button"][aria-label*="ইনভাইট"], div[aria-label*="Add Friend"]'));
+                if (btns.length === 0) {
+                    btns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(function(e) { return /invite|আমন্ত্রণ|add friend/i.test(e.innerText); });
+                }
+                var count = 0;
+                btns.slice(0, 5).forEach(function(btn, i) {
+                    setTimeout(function() { btn.click(); count++; }, i * 1200);
+                });
+                AuraBridge.onDataExtracted('Auto-invite triggered for ' + btns.length + ' targets.');
+            })();
+        """.trimIndent()
+        evaluateJavaScript(js)
+        logEvent("WEBVIEW_BRIDGE", "Triggered FB Auto-Invite Friends")
+        addChatMessage("AURA", "Automatically sending friend invites on Facebook...")
     }
 
     fun saveCustomApiKey(apiKey: String) {

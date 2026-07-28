@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,18 +24,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.South
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -71,9 +81,55 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
     val isListening by viewModel.isListening.collectAsState()
     val selectedLanguage by viewModel.selectedLanguage.collectAsState()
 
+    val isAutoAgentActive by viewModel.isAutoAgentActive.collectAsState()
+
     var urlInputText by remember(currentUrl) { mutableStateOf(currentUrl) }
     var promptInputText by remember { mutableStateOf("") }
     var isChatLogsExpanded by remember { mutableStateOf(false) }
+
+    var showPostDialog by remember { mutableStateOf(false) }
+    var postContentInput by remember { mutableStateOf("") }
+
+    if (showPostDialog) {
+        AlertDialog(
+            onDismissRequest = { showPostDialog = false },
+            title = { Text("Facebook Group Auto-Post (গ্রুপ পোস্ট)") },
+            text = {
+                Column {
+                    Text(
+                        text = "খোলা ফেসবুক গ্রুপে স্বয়ংক্রিয়ভাবে লেখার জন্য নিচের বক্সে আপনার পোস্টটি টাইপ করুন:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = postContentInput,
+                        onValueChange = { postContentInput = it },
+                        label = { Text("Post Content / Capton") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 4
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (postContentInput.isNotBlank()) {
+                            viewModel.triggerFbGroupPost(postContentInput)
+                            showPostDialog = false
+                            postContentInput = ""
+                        }
+                    }
+                ) {
+                    Text("পোস্ট করুন (Post)")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPostDialog = false }) {
+                    Text("বাতিল (Cancel)")
+                }
+            }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -228,36 +284,96 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
             }
         }
 
-        // --- Quick AI Automation Presets ---
-        Row(
+        // --- Quick AI & Facebook Automation Action Toolbar ---
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            AssistChip(
-                onClick = {
-                    viewModel.processUserInput("Extract all main headings and content from this page")
-                },
-                label = { Text("Extract Data", style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp)) }
-            )
+            item {
+                FilterChip(
+                    selected = isAutoAgentActive,
+                    onClick = { viewModel.toggleAutoAgent() },
+                    label = {
+                        Text(
+                            text = if (isAutoAgentActive) "Auto Agent: ON" else "Auto Agent: OFF",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.SmartToy,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isAutoAgentActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        )
+                    }
+                )
+            }
 
-            AssistChip(
-                onClick = {
-                    viewModel.processUserInput("Scroll down the page smoothly")
-                },
-                label = { Text("Scroll Down", style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = { Icon(Icons.Default.South, contentDescription = null, modifier = Modifier.size(14.dp)) }
-            )
+            item {
+                AssistChip(
+                    onClick = { viewModel.navigateTo("https://m.facebook.com") },
+                    label = { Text("Open Facebook", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
 
-            AssistChip(
-                onClick = {
-                    viewModel.processUserInput("Check saved credentials and auto fill login form")
-                },
-                label = { Text("Auto Login", style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(14.dp)) }
-            )
+            item {
+                AssistChip(
+                    onClick = { viewModel.triggerFbAutoReply("ধন্যবাদ! আমি অরা এআই অটোমেটেড মেসেজ।") },
+                    label = { Text("💬 FB Auto-Reply", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = { showPostDialog = true },
+                    label = { Text("📢 Group Post", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = { viewModel.triggerFbAutoInvite() },
+                    label = { Text("👥 Auto Invite", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.GroupAdd, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = {
+                        viewModel.processUserInput("Extract all main headings and content from this page")
+                    },
+                    label = { Text("Extract Data", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = {
+                        viewModel.processUserInput("Scroll down the page smoothly")
+                    },
+                    label = { Text("Scroll Down", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.South, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = {
+                        viewModel.processUserInput("Check saved credentials and auto fill login form")
+                    },
+                    label = { Text("Auto Login", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
         }
 
         // --- Bottom Voice Command & Prompt Input Bar ---

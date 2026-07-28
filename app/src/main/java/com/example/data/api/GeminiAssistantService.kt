@@ -139,10 +139,120 @@ class GeminiAssistantService {
         language: String,
         error: String
     ): AuraAiActionResponse {
-        val lower = userInput.lowercase()
+        val lower = userInput.lowercase().trim()
         val isBn = language == "bn"
 
         return when {
+            // Facebook specific automation triggers
+            lower.contains("facebook") || lower.contains("fb") || lower.contains("ফেসবুক") -> {
+                when {
+                    lower.contains("reply") || lower.contains("message") || lower.contains("মেসেজ") || lower.contains("রিপ্লাই") || lower.contains("chat") -> {
+                        val replyJs = """
+                            (function() {
+                                var inputBox = document.querySelector('div[contenteditable="true"][role="textbox"], textarea[name="body"], input[type="text"][name="body"], div[aria-label="Message"], div[aria-label="মেসেজ"]');
+                                var sendBtn = document.querySelector('div[aria-label="Send"], button[type="submit"], div[role="button"][aria-label="পাঠান"], div[aria-label="Press enter to send"]');
+                                if (inputBox) {
+                                    inputBox.focus();
+                                    document.execCommand('insertText', false, 'Hello! Aura AI automated response.');
+                                    if (sendBtn) { sendBtn.click(); }
+                                    AuraBridge.onDataExtracted('FB Message auto-reply sent.');
+                                } else {
+                                    AuraBridge.onDataExtracted('No open Facebook chat box found. Please open a chat first.');
+                                }
+                            })();
+                        """.trimIndent()
+                        AuraAiActionResponse(
+                            spokenResponse = if (isBn) "ফেসবুক মেসেজে অটো-রিপ্লাই স্ক্রিপ্ট রান করা হচ্ছে।" else "Executing Facebook message auto-reply script.",
+                            actionType = "EXECUTE_JS",
+                            jsCode = replyJs,
+                            extractedResultSummary = "FB Auto-reply triggered"
+                        )
+                    }
+                    lower.contains("post") || lower.contains("group") || lower.contains("পোস্ট") || lower.contains("গ্রুপ") -> {
+                        val postJs = """
+                            (function() {
+                                var postBox = document.querySelector('div[role="button"][aria-label*="Create"], div[role="button"][aria-label*="Write something"], div[role="button"][aria-label*="পোস্ট"]') || document.querySelector('div[contenteditable="true"]');
+                                if (postBox) {
+                                    postBox.click();
+                                    setTimeout(function() {
+                                        var editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
+                                        if (editor) {
+                                            editor.focus();
+                                            document.execCommand('insertText', false, 'Aura Assistant Automated Group Post');
+                                            AuraBridge.onDataExtracted('Post draft created in Facebook Group.');
+                                        }
+                                    }, 1000);
+                                } else {
+                                    AuraBridge.onDataExtracted('Open a Facebook group to auto post.');
+                                }
+                            })();
+                        """.trimIndent()
+                        AuraAiActionResponse(
+                            spokenResponse = if (isBn) "ফেসবুক গ্রুপে অটো-পোস্ট ড্রাফট তৈরি করা হচ্ছে।" else "Creating post draft in Facebook Group.",
+                            actionType = "EXECUTE_JS",
+                            jsCode = postJs,
+                            extractedResultSummary = "FB Group Auto-post initiated"
+                        )
+                    }
+                    lower.contains("invite") || lower.contains("friend") || lower.contains("ইনভাইট") || lower.contains("বন্ধু") -> {
+                        val inviteJs = """
+                            (function() {
+                                var btns = Array.from(document.querySelectorAll('div[role="button"][aria-label*="Invite"], div[role="button"][aria-label*="ইনভাইট"], div[aria-label*="Add Friend"]'));
+                                if (btns.length === 0) {
+                                    btns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(function(e) { return /invite|আমন্ত্রণ|add friend/i.test(e.innerText); });
+                                }
+                                var count = 0;
+                                btns.slice(0, 5).forEach(function(btn, i) {
+                                    setTimeout(function() { btn.click(); count++; }, i * 1000);
+                                });
+                                AuraBridge.onDataExtracted('Auto invite triggered on ' + btns.length + ' profile/group buttons.');
+                            })();
+                        """.trimIndent()
+                        AuraAiActionResponse(
+                            spokenResponse = if (isBn) "ফেসবুক বন্ধুদের স্বয়ংক্রিয়ভাবে ইনভাইট পাঠানো হচ্ছে।" else "Sending auto-invites to Facebook friends.",
+                            actionType = "EXECUTE_JS",
+                            jsCode = inviteJs,
+                            extractedResultSummary = "FB Auto-invite executed"
+                        )
+                    }
+                    else -> {
+                        AuraAiActionResponse(
+                            spokenResponse = if (isBn) "ফেসবুকে নেভিগেট করা হচ্ছে..." else "Navigating to Facebook...",
+                            actionType = "NAVIGATE",
+                            targetUrl = "https://m.facebook.com",
+                            extractedResultSummary = "Navigating to m.facebook.com"
+                        )
+                    }
+                }
+            }
+            // General site navigation triggers
+            lower.contains("goto") || lower.contains("open") || lower.contains("go to") || lower.contains("যাও") || lower.contains("ওপেন") || lower.contains(".com") || lower.contains(".org") || lower.contains(".net") || lower.startsWith("http") -> {
+                var clean = lower
+                    .replace("goto", "")
+                    .replace("go to", "")
+                    .replace("open", "")
+                    .replace("যাও", "")
+                    .replace("ওপেন", "")
+                    .replace("সাইটে", "")
+                    .trim()
+
+                val targetUrl = when {
+                    clean.startsWith("http://") || clean.startsWith("https://") -> clean
+                    clean.contains(".") -> "https://$clean"
+                    clean.contains("facebook") || clean.contains("fb") -> "https://m.facebook.com"
+                    clean.contains("youtube") -> "https://m.youtube.com"
+                    clean.contains("google") -> "https://www.google.com"
+                    clean.contains("github") -> "https://github.com"
+                    else -> "https://www.google.com/search?q=${clean}"
+                }
+
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "$targetUrl এ নেভিগেট করা হচ্ছে..." else "Navigating to $targetUrl",
+                    actionType = "NAVIGATE",
+                    targetUrl = targetUrl,
+                    extractedResultSummary = "Direct navigation fallback triggered"
+                )
+            }
             lower.contains("google") || lower.contains("search") || lower.contains("খুঁজো") || lower.contains("সার্চ") -> {
                 val query = userInput.replace("search", "", ignoreCase = true)
                     .replace("খুঁজো", "", ignoreCase = true)
@@ -182,9 +292,9 @@ class GeminiAssistantService {
             else -> {
                 AuraAiActionResponse(
                     spokenResponse = if (isBn)
-                        "কমান্ডটির জন্য প্রস্তুতি নিচ্ছি। $error। সেটিংসে GEMINI_API_KEY কনফিগার করুন।"
+                        "কমান্ডের জন্য তৈরি। $error"
                     else
-                        "Processing command locally ($error). Please ensure GEMINI_API_KEY is configured in Secrets panel.",
+                        "Ready for commands. Status: $error",
                     actionType = "CONVERSATION",
                     extractedResultSummary = "System ready. API Status: $error"
                 )
