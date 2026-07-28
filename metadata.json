@@ -1,0 +1,6 @@
+{
+  "name": "AuraAssistant",
+  "description": "Autonomous AI Assistant with Bengali/English Voice NLP, Embedded WebView Control, Dynamic Memory & Secure Vault",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
