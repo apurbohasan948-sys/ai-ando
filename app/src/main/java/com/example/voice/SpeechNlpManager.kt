@@ -44,7 +44,7 @@ class SpeechNlpManager(private val context: Context) : TextToSpeech.OnInitListen
 
     private fun updateTtsLanguage(langCode: String) {
         if (!isTtsReady || tts == null) return
-        val locale = if (langCode == "bn") Locale("bn", "BD") else Locale.US
+        val locale = if (langCode == "bn") Locale.forLanguageTag("bn-BD") else Locale.US
         val result = tts?.setLanguage(locale)
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
             tts?.language = Locale.US

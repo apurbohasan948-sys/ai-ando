@@ -26,8 +26,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Create .env Configuration File
+        env:
+          SECRET_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+          API_KEY="${SECRET_KEY}"
+          if [ -z "$API_KEY" ]; then
+            API_KEY="MY_GEMINI_API_KEY"
+          fi
+          echo "GEMINI_API_KEY=$API_KEY" > .env
 
       - name: Restore debug.keystore
         run: |
