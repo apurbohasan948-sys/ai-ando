@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
 import android.webkit.WebView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -50,6 +51,11 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private var activeWebView: WebView? = null
 
     // UI States
+    private val prefs = application.getSharedPreferences("aura_settings", Context.MODE_PRIVATE)
+
+    private val _customApiKey = MutableStateFlow(prefs.getString("custom_gemini_api_key", "") ?: "")
+    val customApiKey: StateFlow<String> = _customApiKey.asStateFlow()
+
     private val _currentUrl = MutableStateFlow("https://www.google.com")
     val currentUrl: StateFlow<String> = _currentUrl.asStateFlow()
 
@@ -194,7 +200,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 domContentSummary = _domSummary.value,
                 availableCredentials = credentials,
                 learnedRules = rules,
-                preferredLanguage = lang
+                preferredLanguage = lang,
+                customApiKey = _customApiKey.value
             )
 
             logEvent("GEMINI_AI", "Action determined: ${actionResponse.actionType}. Voice reply: ${actionResponse.spokenResponse}")
@@ -347,6 +354,19 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
             memoryStore.deleteRule(rule)
             logEvent("SELF_MEMORY", "Rule deleted: ${rule.ruleTitle}")
         }
+    }
+
+    fun saveCustomApiKey(apiKey: String) {
+        val trimmed = apiKey.trim()
+        prefs.edit().putString("custom_gemini_api_key", trimmed).apply()
+        _customApiKey.value = trimmed
+        logEvent("SETTINGS", "Custom Gemini API Key updated in local storage.")
+    }
+
+    fun clearCustomApiKey() {
+        prefs.edit().remove("custom_gemini_api_key").apply()
+        _customApiKey.value = ""
+        logEvent("SETTINGS", "Custom Gemini API Key cleared.")
     }
 
     private fun addChatMessage(

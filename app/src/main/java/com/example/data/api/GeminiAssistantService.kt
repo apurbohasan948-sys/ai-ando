@@ -20,12 +20,17 @@ class GeminiAssistantService {
         domContentSummary: String,
         availableCredentials: List<CredentialEntity>,
         learnedRules: List<MemoryRuleEntity>,
-        preferredLanguage: String = "en" // "en" or "bn"
+        preferredLanguage: String = "en", // "en" or "bn"
+        customApiKey: String? = null
     ): AuraAiActionResponse = withContext(Dispatchers.IO) {
-        val apiKey = try {
-            BuildConfig.GEMINI_API_KEY
-        } catch (e: Exception) {
-            ""
+        val apiKey = if (!customApiKey.isNullOrBlank()) {
+            customApiKey.trim()
+        } else {
+            try {
+                BuildConfig.GEMINI_API_KEY
+            } catch (e: Exception) {
+                ""
+            }
         }
 
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
@@ -33,7 +38,10 @@ class GeminiAssistantService {
                 userInput = userInput,
                 currentUrl = currentUrl,
                 language = preferredLanguage,
-                error = "Gemini API Key is missing or not configured in Secrets panel."
+                error = if (preferredLanguage == "bn")
+                    "Gemini API Key সেট করা নেই। Gemini AI Setup স্ক্রিনে নতুন API Key দিন।"
+                else
+                    "Gemini API Key missing. Please set your API Key in the Gemini AI Setup screen."
             )
         }
 
