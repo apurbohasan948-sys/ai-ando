@@ -279,8 +279,12 @@ class GeminiAssistantService {
                             });
                         }
                         if (googleMatch) {
-                            googleMatch.focus();
-                            googleMatch.click();
+                            if (window.AuraForceClick) {
+                                window.AuraForceClick(googleMatch);
+                            } else {
+                                googleMatch.focus();
+                                googleMatch.click();
+                            }
                             AuraBridge.onDataExtracted('Clicked Google login button: ' + (googleMatch.innerText || 'Google Sign-In'));
                         } else {
                             AuraBridge.onDataExtracted('Google login button not found on this page.');
@@ -292,6 +296,69 @@ class GeminiAssistantService {
                     actionType = "EXECUTE_JS",
                     jsCode = googleClickJs,
                     extractedResultSummary = "Google login button click executed"
+                )
+            }
+            // Movie / Video Download Link Extractor trigger
+            lower.contains("video") || lower.contains("movie") || lower.contains("download") || lower.contains("ভিডিও") || lower.contains("মুভি") || lower.contains("ডাউনলোড") || lower.contains("extract") -> {
+                val extractJs = """
+                    (function() {
+                        if (window.AuraExtractVideoLinks) {
+                            window.AuraExtractVideoLinks();
+                        } else {
+                            var title = document.title || 'Movie Video';
+                            var pageUrl = window.location.href;
+                            AuraBridge.onDataExtracted('MEDIA_TITLE: ' + title + '\nMEDIA_LINK: ' + pageUrl);
+                        }
+                    })();
+                """.trimIndent()
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "পেজ থেকে ভিডিও ও ডাউনলোড লিঙ্ক এক্সট্র্যাক্ট করা হচ্ছে..." else "Extracting video download links from current page...",
+                    actionType = "EXECUTE_JS",
+                    jsCode = extractJs,
+                    extractedResultSummary = "Video download link extraction executed"
+                )
+            }
+            // Admin Panel Auto-Post Trigger
+            lower.contains("post to admin") || lower.contains("admin panel") || lower.contains("এডমিন প্যানেল") || lower.contains("পোস্ট করো") || lower.contains("auto post") -> {
+                val postJs = """
+                    (function() {
+                        var titleInput = document.querySelector('input[name*="title"], input[placeholder*="title"], input[placeholder*="Title"], input[id*="title"], input[type="text"]');
+                        var linkInput = document.querySelector('input[name*="url"], input[name*="link"], input[placeholder*="link"], input[placeholder*="URL"], input[id*="url"], textarea');
+                        var submitBtn = document.querySelector('button[type="submit"], button:not([type="button"]), div[role="button"][aria-label*="Post"], div[role="button"][aria-label*="Save"], button');
+
+                        var pageTitle = document.title ? document.title.replace('- MovieAdmin Pro', '').trim() : 'New Movie Post';
+                        var pageUrl = window.location.href;
+
+                        if (window.AuraHumanType && titleInput) {
+                            window.AuraHumanType(titleInput, pageTitle, 40, function() {
+                                if (linkInput) {
+                                    window.AuraHumanType(linkInput, pageUrl, 40, function() {
+                                        if (submitBtn) {
+                                            setTimeout(function() {
+                                                if (window.AuraForceClick) window.AuraForceClick(submitBtn);
+                                                else submitBtn.click();
+                                            }, 400);
+                                        }
+                                        AuraBridge.onDataExtracted('Successfully posted title & link to admin portal!');
+                                    });
+                                } else {
+                                    if (submitBtn) {
+                                        if (window.AuraForceClick) window.AuraForceClick(submitBtn);
+                                        else submitBtn.click();
+                                    }
+                                    AuraBridge.onDataExtracted('Posted title to admin portal!');
+                                }
+                            });
+                        } else {
+                            AuraBridge.onDataExtracted('Admin panel post inputs not found on this page.');
+                        }
+                    })();
+                """.trimIndent()
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "অ্যাডমিন প্যানেলে টাইটেল এবং লিঙ্ক টাইপ করে পোস্ট করা হচ্ছে..." else "Auto-posting title and video link to admin panel...",
+                    actionType = "EXECUTE_JS",
+                    jsCode = postJs,
+                    extractedResultSummary = "Auto post to admin panel executed"
                 )
             }
             // Dynamic link creation / Website extraction triggers
@@ -377,8 +444,12 @@ class GeminiAssistantService {
                             return kw.length > 0 ? txt.includes(kw) : true;
                         });
                         if (match) {
-                            match.focus();
-                            match.click();
+                            if (window.AuraForceClick) {
+                                window.AuraForceClick(match);
+                            } else {
+                                match.focus();
+                                match.click();
+                            }
                             AuraBridge.onDataExtracted('Clicked button: ' + (match.innerText || '$targetName'));
                         } else {
                             AuraBridge.onDataExtracted('Button matching "$targetName" not found.');

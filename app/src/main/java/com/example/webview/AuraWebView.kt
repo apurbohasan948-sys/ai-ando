@@ -56,9 +56,24 @@ fun AuraWebViewContainer(
                         view?.title?.let { onTitleChanged(it) }
                         onLoadingStateChanged(false, 100)
 
-                        // Inject Human Typer Helper & DOM Inspector Scripts
+                        // Inject Human Typer Helper, Force Click & Video Link Extractor Scripts
                         val scriptHelper = """
                             (function() {
+                                if (!window.AuraForceClick) {
+                                    window.AuraForceClick = function(el) {
+                                        if (!el) return false;
+                                        try {
+                                            el.focus();
+                                            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function(evt) {
+                                                el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+                                            });
+                                            return true;
+                                        } catch(e) {
+                                            try { el.click(); return true; } catch(err) { return false; }
+                                        }
+                                    };
+                                }
+
                                 if (!window.AuraHumanType) {
                                     window.AuraHumanType = function(selector, text, delayMs, onComplete) {
                                         var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
@@ -67,14 +82,14 @@ fun AuraWebViewContainer(
                                             return;
                                         }
                                         el.focus();
-                                        try { el.click(); } catch(e) {}
+                                        if (window.AuraForceClick) window.AuraForceClick(el);
                                         if (el.isContentEditable) {
                                             el.innerHTML = '';
                                         } else if (el.value !== undefined) {
                                             el.value = '';
                                         }
                                         var i = 0;
-                                        var speed = delayMs || 50;
+                                        var speed = delayMs || 40;
                                         function typeChar() {
                                             if (i < text.length) {
                                                 var ch = text.charAt(i);
@@ -86,7 +101,7 @@ fun AuraWebViewContainer(
                                                     el.dispatchEvent(new Event('change', { bubbles: true }));
                                                 }
                                                 i++;
-                                                setTimeout(typeChar, speed + Math.floor(Math.random() * 30));
+                                                setTimeout(typeChar, speed + Math.floor(Math.random() * 20));
                                             } else {
                                                 if (el.value !== undefined) {
                                                     el.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -98,6 +113,33 @@ fun AuraWebViewContainer(
                                             }
                                         }
                                         typeChar();
+                                    };
+                                }
+
+                                if (!window.AuraExtractVideoLinks) {
+                                    window.AuraExtractVideoLinks = function() {
+                                        var elements = Array.from(document.querySelectorAll('a[href], button[onclick], iframe[src], source[src], video[src], embed[src]'));
+                                        var found = [];
+                                        var kwRegex = /download|link|stream|drive|mega|magnet|480p|720p|1080p|4k|mkv|mp4|play|file|watch|embed/i;
+                                        
+                                        elements.forEach(function(el) {
+                                            var href = el.href || el.src || el.getAttribute('onclick') || '';
+                                            var txt = (el.innerText || el.title || el.getAttribute('aria-label') || el.value || '').trim();
+                                            if (href && (kwRegex.test(href) || kwRegex.test(txt))) {
+                                                found.push({ title: txt || document.title, link: href });
+                                            }
+                                        });
+
+                                        var pageTitle = document.title || 'Extracted Media';
+                                        var finalLink = found.length > 0 ? found[0].link : window.location.href;
+                                        var resultText = "MEDIA_TITLE: " + pageTitle + "\nMEDIA_LINK: " + finalLink;
+                                        if (found.length > 1) {
+                                            resultText += "\nALL_LINKS:\n" + found.slice(0, 5).map(f => "- " + f.title + ": " + f.link).join("\n");
+                                        }
+                                        if (window.AuraBridge) {
+                                            window.AuraBridge.onDataExtracted(resultText);
+                                        }
+                                        return resultText;
                                     };
                                 }
 

@@ -74,6 +74,12 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private val _extractedContent = MutableStateFlow("")
     val extractedContent: StateFlow<String> = _extractedContent.asStateFlow()
 
+    private val _lastVideoTitle = MutableStateFlow("")
+    val lastVideoTitle: StateFlow<String> = _lastVideoTitle.asStateFlow()
+
+    private val _lastVideoLink = MutableStateFlow("")
+    val lastVideoLink: StateFlow<String> = _lastVideoLink.asStateFlow()
+
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(
         listOf(
             ChatMessage(
@@ -133,6 +139,14 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             webViewBridge.extractedDataFlow.collect { event ->
                 _extractedContent.value = event.content
+                if (event.content.contains("MEDIA_TITLE:")) {
+                    val lines = event.content.lines()
+                    val titleLine = lines.find { it.startsWith("MEDIA_TITLE:") }?.replace("MEDIA_TITLE:", "")?.trim()
+                    val linkLine = lines.find { it.startsWith("MEDIA_LINK:") }?.replace("MEDIA_LINK:", "")?.trim()
+                    if (!titleLine.isNullOrBlank()) _lastVideoTitle.value = titleLine
+                    if (!linkLine.isNullOrBlank()) _lastVideoLink.value = linkLine
+                    logEvent("VIDEO_EXTRACT", "Captured video title: $titleLine | link: $linkLine")
+                }
                 logEvent("WEBVIEW_BRIDGE", "Extracted page data (${event.content.length} chars).")
                 addChatMessage("AURA", "Data extracted: ${event.content.take(150)}...")
             }

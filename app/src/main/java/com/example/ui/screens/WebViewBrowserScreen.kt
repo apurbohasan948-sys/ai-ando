@@ -323,6 +323,30 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
 
             item {
                 AssistChip(
+                    onClick = { viewModel.processUserInput("extract video links from current page") },
+                    label = { Text("🎬 Extract Video Link (ভিডিও লিঙ্ক নিন)", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = { viewModel.processUserInput("auto post to admin panel") },
+                    label = { Text("🚀 Post to Admin (এডমিন পোস্টে টাইপ)", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = { viewModel.navigateTo("https://ramimhasan820.netlify.app/") },
+                    label = { Text("🌐 Movie Admin Portal", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
                     onClick = { viewModel.readCurrentPageContent() },
                     label = { Text("📖 Read Page (পেজ পড়ুন)", style = MaterialTheme.typography.labelSmall) },
                     leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp)) }
