@@ -315,6 +315,14 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
 
             item {
                 AssistChip(
+                    onClick = { viewModel.processUserInput("login with google") },
+                    label = { Text("🔑 Google Login (গুগল লগইন)", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
                     onClick = { viewModel.readCurrentPageContent() },
                     label = { Text("📖 Read Page (পেজ পড়ুন)", style = MaterialTheme.typography.labelSmall) },
                     leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp)) }

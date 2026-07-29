@@ -77,17 +77,18 @@ class GeminiAssistantService {
             4. Memory Context: $rulesPrompt
 
             Capabilities:
-            - If user asks to search or open a web page (e.g. "Go to Wikipedia", "Search for latest quantum news"):
-              Set actionType = "NAVIGATE" or "EXECUTE_JS" and provide targetUrl or search query.
-            - If user asks to auto-fill forms, click buttons, scroll, or extract content from current web page:
-              Set actionType = "EXECUTE_JS" and generate precise, safe Vanilla JavaScript code in 'jsCode'.
+            - If user asks to search or open a web page (e.g. "Go to https://example.com", "Search for latest news"):
+              Set actionType = "NAVIGATE" and provide clean targetUrl.
+            - If user asks to click a button, login with Google, continue with Google, fill forms, or interact with DOM:
+              Set actionType = "EXECUTE_JS" and generate precise Vanilla JavaScript code in 'jsCode'.
               JS Examples:
-              - Form fill: "document.querySelector('input[type=search], input[name=q], input[type=text]').value = 'query'; document.querySelector('form').submit();"
+              - Click Google login button: "var b = Array.from(document.querySelectorAll('button, a, div[role=button], input')).find(e => /google|continue|sign in|login/i.test(e.innerText || e.value || e.getAttribute('aria-label') || '')); if(b) { b.click(); AuraBridge.onDataExtracted('Clicked button: ' + (b.innerText||'Login')); } else { AuraBridge.onDataExtracted('Google button not found'); }"
+              - Type input: "if (window.AuraHumanType) { window.AuraHumanType('input[type=text]', 'text'); }"
               - Scroll: "window.scrollTo({top: 500, behavior: 'smooth'});"
               - Data extract: "var data = Array.from(document.querySelectorAll('h1, h2, p')).map(e=>e.innerText).join('\n'); AuraBridge.onDataExtracted(data.substring(0, 500));"
             - If user asks to log in or use saved credentials:
               Set actionType = "REQUEST_CREDENTIAL_AUTH" and set requestedCredentialDomain = domain name.
-            - If user asks to learn or remember a pattern/preference (or a task succeeded):
+            - If user asks to learn or remember a pattern/preference:
               Set actionType = "UPDATE_MEMORY", provide newMemoryCategory ("TASK_PATTERN" / "USER_PREFERENCE"), newMemoryTitle, newMemoryDescription.
 
             MUST return JSON matching this exact structure:
@@ -260,6 +261,39 @@ class GeminiAssistantService {
                     }
                 }
             }
+            // Google Login or Button click triggers
+            lower.contains("login with google") || lower.contains("continue with google") || lower.contains("sign in with google") ||
+            (lower.contains("google") && (lower.contains("login") || lower.contains("sign in") || lower.contains("continue") || lower.contains("লগইন") || lower.contains("বাটন") || lower.contains("ক্লিক"))) -> {
+                val googleClickJs = """
+                    (function() {
+                        var targets = Array.from(document.querySelectorAll('button, a, div[role="button"], input[type="submit"], input[type="button"], span[role="button"], div[aria-label]'));
+                        var googleMatch = targets.find(function(el) {
+                            var txt = (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').toLowerCase();
+                            return txt.includes('google') || txt.includes('continue with') || txt.includes('sign in') || txt.includes('log in');
+                        });
+                        if (!googleMatch) {
+                            var all = Array.from(document.querySelectorAll('*'));
+                            googleMatch = all.find(function(el) {
+                                var txt = (el.innerText || '').toLowerCase();
+                                return (txt.includes('continue with google') || txt.includes('sign in with google') || txt.includes('login with google')) && el.children.length === 0;
+                            });
+                        }
+                        if (googleMatch) {
+                            googleMatch.focus();
+                            googleMatch.click();
+                            AuraBridge.onDataExtracted('Clicked Google login button: ' + (googleMatch.innerText || 'Google Sign-In'));
+                        } else {
+                            AuraBridge.onDataExtracted('Google login button not found on this page.');
+                        }
+                    })();
+                """.trimIndent()
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "গুগল লগইন বাটনে ক্লিক করা হচ্ছে..." else "Clicking Google login button...",
+                    actionType = "EXECUTE_JS",
+                    jsCode = googleClickJs,
+                    extractedResultSummary = "Google login button click executed"
+                )
+            }
             // Dynamic link creation / Website extraction triggers
             lower.contains("link") || lower.contains("লিঙ্ক") || lower.contains("ইউআরএল") || lower.contains("url") -> {
                 val linkJs = """
@@ -278,8 +312,17 @@ class GeminiAssistantService {
                     extractedResultSummary = "Web link extracted"
                 )
             }
-            // General site navigation triggers
-            lower.contains("goto") || lower.contains("open") || lower.contains("go to") || lower.contains("যাও") || lower.contains("ওপেন") || lower.contains(".com") || lower.contains(".org") || lower.contains(".net") || lower.startsWith("http") -> {
+            // Direct URL or Site navigation triggers (Extract clean URL using Regex)
+            Regex("https?://[a-zA-Z0-9.-]+(?:/[^\\s]*)?").containsMatchIn(userInput) -> {
+                val cleanUrl = Regex("https?://[a-zA-Z0-9.-]+(?:/[^\\s]*)?").find(userInput)?.value ?: "https://www.google.com"
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "$cleanUrl এ যাওয়া হচ্ছে..." else "Navigating to $cleanUrl",
+                    actionType = "NAVIGATE",
+                    targetUrl = cleanUrl,
+                    extractedResultSummary = "Extracted clean URL navigation"
+                )
+            }
+            lower.contains("goto") || lower.contains("open") || lower.contains("go to") || lower.contains("যাও") || lower.contains("ওপেন") || lower.contains(".com") || lower.contains(".org") || lower.contains(".net") -> {
                 var clean = lower
                     .replace("goto", "")
                     .replace("go to", "")
@@ -290,11 +333,9 @@ class GeminiAssistantService {
                     .trim()
 
                 val targetUrl = when {
-                    clean.startsWith("http://") || clean.startsWith("https://") -> clean
-                    clean.contains(".") -> "https://$clean"
+                    clean.contains(".") -> if (clean.startsWith("http")) clean else "https://$clean"
                     clean.contains("facebook") || clean.contains("fb") -> "https://m.facebook.com"
                     clean.contains("youtube") -> "https://m.youtube.com"
-                    clean.contains("google") -> "https://www.google.com"
                     clean.contains("github") -> "https://github.com"
                     else -> "https://www.google.com/search?q=${clean}"
                 }
@@ -303,11 +344,13 @@ class GeminiAssistantService {
                     spokenResponse = if (isBn) "$targetUrl এ নেভিগেট করা হচ্ছে..." else "Navigating to $targetUrl",
                     actionType = "NAVIGATE",
                     targetUrl = targetUrl,
-                    extractedResultSummary = "Direct navigation fallback triggered"
+                    extractedResultSummary = "Site navigation triggered"
                 )
             }
-            lower.contains("google") || lower.contains("search") || lower.contains("খুঁজো") || lower.contains("সার্চ") -> {
-                val query = userInput.replace("search", "", ignoreCase = true)
+            // Explicit Web Search triggers only
+            lower.startsWith("search") || lower.contains("search for") || lower.contains("খুঁজো") || lower.contains("সার্চ") -> {
+                val query = userInput.replace("search for", "", ignoreCase = true)
+                    .replace("search", "", ignoreCase = true)
                     .replace("খুঁজো", "", ignoreCase = true)
                     .replace("সার্চ", "", ignoreCase = true).trim()
                 val target = if (query.isNotEmpty()) "https://www.google.com/search?q=${query}" else "https://www.google.com"
@@ -315,7 +358,38 @@ class GeminiAssistantService {
                     spokenResponse = if (isBn) "গুগলে সার্চ নেভিগেট করা হচ্ছে..." else "Navigating web search for: $query",
                     actionType = "NAVIGATE",
                     targetUrl = target,
-                    extractedResultSummary = "Local fallback triggered ($error)"
+                    extractedResultSummary = "Web search triggered"
+                )
+            }
+            // Button Click triggers
+            lower.contains("click") || lower.contains("press") || lower.contains("ক্লিক") || lower.contains("বাটন") -> {
+                val targetName = userInput.replace("click", "", ignoreCase = true)
+                    .replace("press", "", ignoreCase = true)
+                    .replace("ক্লিক", "", ignoreCase = true)
+                    .replace("বাটন", "", ignoreCase = true).trim()
+
+                val clickJs = """
+                    (function() {
+                        var kw = '$targetName'.toLowerCase();
+                        var targets = Array.from(document.querySelectorAll('button, a, div[role="button"], input[type="submit"], input[type="button"]'));
+                        var match = targets.find(function(el) {
+                            var txt = (el.innerText || el.value || el.getAttribute('aria-label') || '').toLowerCase();
+                            return kw.length > 0 ? txt.includes(kw) : true;
+                        });
+                        if (match) {
+                            match.focus();
+                            match.click();
+                            AuraBridge.onDataExtracted('Clicked button: ' + (match.innerText || '$targetName'));
+                        } else {
+                            AuraBridge.onDataExtracted('Button matching "$targetName" not found.');
+                        }
+                    })();
+                """.trimIndent()
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "$targetName বাটনে ক্লিক করা হচ্ছে..." else "Clicking button $targetName...",
+                    actionType = "EXECUTE_JS",
+                    jsCode = clickJs,
+                    extractedResultSummary = "Button click triggered"
                 )
             }
             lower.contains("scroll") || lower.contains("স্ক্রোল") -> {

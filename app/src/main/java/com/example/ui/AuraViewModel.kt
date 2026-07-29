@@ -177,6 +177,8 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         _loadingProgress.value = progress
     }
 
+    private val _pendingCommand = MutableStateFlow<String?>(null)
+
     fun navigateTo(url: String) {
         var formatted = url.trim()
         if (!formatted.startsWith("http://") && !formatted.startsWith("https://")) {
@@ -192,6 +194,22 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         val lang = speechManager.selectedLanguage.value
         addChatMessage("USER", input)
         logEvent("VOICE_NLP", "Processing input ($lang): \"$input\"")
+
+        // If command contains both a URL and an action (e.g. "goto http... and login with google")
+        if (input.contains("http") || input.contains(".com") || input.contains(".app") || input.contains("goto")) {
+            val lower = input.lowercase()
+            if (lower.contains("login") || lower.contains("google") || lower.contains("click") || lower.contains("post") || lower.contains("sign in")) {
+                val actionPart = input.replace(Regex("https?://[a-zA-Z0-9.-]+(?:/[^\\s]*)?"), "")
+                    .replace("goto", "", ignoreCase = true)
+                    .replace("go to", "", ignoreCase = true)
+                    .replace("and", "", ignoreCase = true)
+                    .trim()
+                if (actionPart.isNotBlank()) {
+                    _pendingCommand.value = actionPart
+                    logEvent("AUTO_AGENT", "Queued pending action for after page load: \"$actionPart\"")
+                }
+            }
+        }
 
         viewModelScope.launch {
             val credentials = credentialDao.getCredentialsForDomain(_currentUrl.value)
@@ -444,6 +462,17 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         
         logEvent("AUTO_AGENT", "Mandatory Auto Page Read executed: $cleanTitle")
         addChatMessage("AURA", statusMsg)
+
+        // Check if there is a pending queued command (e.g. "login with google")
+        val pendingCmd = _pendingCommand.value
+        if (!pendingCmd.isNullOrBlank()) {
+            _pendingCommand.value = null
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(800)
+                logEvent("AUTO_AGENT", "Auto-executing queued action after page load: \"$pendingCmd\"")
+                processUserInput(pendingCmd)
+            }
+        }
 
         // Automatically trigger AI voice brief if Auto Agent is active or for new pages
         if (_isAutoAgentActive.value) {
