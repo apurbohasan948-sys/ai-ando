@@ -140,8 +140,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             webViewBridge.pageInspectionFlow.collect { event ->
-                _domSummary.value = "Title: ${event.title}\nForms: ${event.formsJson}"
-                logEvent("WEBVIEW_BRIDGE", "DOM Inspected: ${event.title}")
+                val summaryText = "Title: ${event.title}\nURL: ${event.url}\nContent Summary: ${event.formsJson}"
+                _domSummary.value = summaryText
+                logEvent("WEBVIEW_BRIDGE", "DOM Content Inspected & Read: ${event.title}")
+                onAutomaticPageLoaded(event.title, event.url, event.formsJson)
             }
         }
 
@@ -367,25 +369,28 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         addChatMessage("AURA", stateMsg)
     }
 
-    fun triggerFbAutoReply(replyText: String = "Hello! Aura AI automated response.") {
+    fun triggerFbAutoReply(replyText: String = "ধন্যবাদ! আমি Aura AI অটোমেটেড মেসেজ।") {
         val safeText = replyText.replace("'", "\\'").replace("\n", " ")
         val js = """
             (function() {
-                var inputBox = document.querySelector('div[contenteditable="true"][role="textbox"], textarea[name="body"], input[type="text"][name="body"], div[aria-label="Message"], div[aria-label="মেসেজ"]');
-                var sendBtn = document.querySelector('div[aria-label="Send"], button[type="submit"], div[role="button"][aria-label="পাঠান"], div[aria-label="Press enter to send"]');
-                if (inputBox) {
-                    inputBox.focus();
-                    document.execCommand('insertText', false, '$safeText');
-                    if (sendBtn) { sendBtn.click(); }
-                    AuraBridge.onDataExtracted('FB Message auto-reply sent: $safeText');
+                var selector = 'div[contenteditable="true"][role="textbox"], textarea[name="body"], input[type="text"][name="body"], div[aria-label="Message"], div[aria-label="মেসেজ"]';
+                var sendBtnSelector = 'div[aria-label="Send"], button[type="submit"], div[role="button"][aria-label="পাঠান"], div[aria-label="Press enter to send"]';
+                if (window.AuraHumanType) {
+                    window.AuraHumanType(selector, '$safeText', 60, function() {
+                        setTimeout(function() {
+                            var sendBtn = document.querySelector(sendBtnSelector);
+                            if (sendBtn) sendBtn.click();
+                        }, 500);
+                    });
                 } else {
-                    AuraBridge.onDataExtracted('No open Facebook chat window found. Please open a chat first.');
+                    var box = document.querySelector(selector);
+                    if (box) { box.focus(); document.execCommand('insertText', false, '$safeText'); }
                 }
             })();
         """.trimIndent()
         evaluateJavaScript(js)
-        logEvent("WEBVIEW_BRIDGE", "Triggered Facebook Auto-Reply")
-        addChatMessage("AURA", "Sending auto-reply in Facebook chat: \"$safeText\"")
+        logEvent("WEBVIEW_BRIDGE", "Triggered Human-Typing Facebook Auto-Reply")
+        addChatMessage("AURA", "Typing auto-reply in chat: \"$safeText\"...")
     }
 
     fun triggerFbGroupPost(postText: String) {
@@ -396,23 +401,71 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                 if (postBox) {
                     postBox.click();
                     setTimeout(function() {
-                        var editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
-                        if (editor) {
-                            editor.focus();
-                            document.execCommand('insertText', false, '$safeText');
-                            AuraBridge.onDataExtracted('Group post text written.');
+                        var editorSelector = 'div[contenteditable="true"][role="textbox"]';
+                        if (window.AuraHumanType) {
+                            window.AuraHumanType(editorSelector, '$safeText', 50, function() {
+                                AuraBridge.onDataExtracted('Human-typed group post complete.');
+                            });
                         } else {
-                            AuraBridge.onDataExtracted('Editor opened in group.');
+                            var ed = document.querySelector(editorSelector);
+                            if (ed) { ed.focus(); document.execCommand('insertText', false, '$safeText'); }
                         }
                     }, 1000);
                 } else {
-                    AuraBridge.onDataExtracted('Please open a Facebook group page to post.');
+                    AuraBridge.onDataExtracted('Please open a Facebook group page first.');
                 }
             })();
         """.trimIndent()
         evaluateJavaScript(js)
-        logEvent("WEBVIEW_BRIDGE", "Triggered FB Group Auto-Post")
-        addChatMessage("AURA", "Creating automated Facebook group post...")
+        logEvent("WEBVIEW_BRIDGE", "Triggered FB Group Auto-Post with Human Typing")
+        addChatMessage("AURA", "Typing post in Facebook group editor...")
+    }
+
+    fun humanTypeIntoField(selector: String, textToType: String) {
+        val safeSelector = selector.replace("'", "\\'")
+        val safeText = textToType.replace("'", "\\'").replace("\n", "\\n")
+        val js = """
+            (function() {
+                if (window.AuraHumanType) {
+                    window.AuraHumanType('$safeSelector', '$safeText', 50, function() {
+                        AuraBridge.onDataExtracted('Typed into $safeSelector');
+                    });
+                }
+            })();
+        """.trimIndent()
+        evaluateJavaScript(js)
+        logEvent("WEBVIEW_BRIDGE", "Human typing into field: $selector")
+    }
+
+    private fun onAutomaticPageLoaded(title: String, url: String, domContent: String) {
+        val isBn = selectedLanguage.value == "bn"
+        val cleanTitle = if (title.length > 40) title.take(40) + "..." else title
+        val statusMsg = if (isBn) "পেজের কন্টেন্ট পড়ার কাজ শেষ: $cleanTitle" else "Automatically read page content: $cleanTitle"
+        
+        logEvent("AUTO_AGENT", "Mandatory Auto Page Read executed: $cleanTitle")
+        addChatMessage("AURA", statusMsg)
+
+        // Automatically trigger AI voice brief if Auto Agent is active or for new pages
+        if (_isAutoAgentActive.value) {
+            val audioSpeech = if (isBn) "পেজ সম্পূর্ণ পড়া হয়েছে: $cleanTitle। কোন অ্যাকশন নিতে নির্দেশ দিতে পারেন।" else "Page fully read: $cleanTitle. Ready for actions."
+            speechManager.speak(audioSpeech)
+
+            if (url.contains("facebook.com") && (domContent.lowercase().contains("invite") || domContent.lowercase().contains("add friend") || domContent.contains("যোগ করুন"))) {
+                triggerFbAutoInvite()
+            }
+        }
+    }
+
+    fun readCurrentPageContent() {
+        val summary = _domSummary.value
+        val isBn = selectedLanguage.value == "bn"
+        if (summary.isBlank()) {
+            val msg = if (isBn) "পেজ লোড হওয়া পর্যন্ত অপেক্ষা করুন..." else "Reading page content... Please wait for page to finish loading."
+            speechManager.speak(msg)
+            addChatMessage("AURA", msg)
+        } else {
+            processUserInput("Read and explain the key content of this page based on DOM summary: $summary")
+        }
     }
 
     fun triggerFbAutoInvite() {

@@ -56,24 +56,67 @@ fun AuraWebViewContainer(
                         view?.title?.let { onTitleChanged(it) }
                         onLoadingStateChanged(false, 100)
 
-                        // Inject inspector helper script
-                        val autoInspectorJs = """
+                        // Inject Human Typer Helper & DOM Inspector Scripts
+                        val scriptHelper = """
                             (function() {
+                                if (!window.AuraHumanType) {
+                                    window.AuraHumanType = function(selector, text, delayMs, onComplete) {
+                                        var el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+                                        if (!el) {
+                                            if (window.AuraBridge) window.AuraBridge.onDataExtracted('Field not found: ' + selector);
+                                            return;
+                                        }
+                                        el.focus();
+                                        try { el.click(); } catch(e) {}
+                                        if (el.isContentEditable) {
+                                            el.innerHTML = '';
+                                        } else if (el.value !== undefined) {
+                                            el.value = '';
+                                        }
+                                        var i = 0;
+                                        var speed = delayMs || 50;
+                                        function typeChar() {
+                                            if (i < text.length) {
+                                                var ch = text.charAt(i);
+                                                if (el.isContentEditable) {
+                                                    document.execCommand('insertText', false, ch);
+                                                } else if (el.value !== undefined) {
+                                                    el.value += ch;
+                                                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                                                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                                                }
+                                                i++;
+                                                setTimeout(typeChar, speed + Math.floor(Math.random() * 30));
+                                            } else {
+                                                if (el.value !== undefined) {
+                                                    el.dispatchEvent(new Event('blur', { bubbles: true }));
+                                                }
+                                                if (window.AuraBridge) {
+                                                    window.AuraBridge.onDataExtracted('Typed (' + text.length + ' chars) into ' + selector);
+                                                }
+                                                if (typeof onComplete === 'function') onComplete();
+                                            }
+                                        }
+                                        typeChar();
+                                    };
+                                }
+
                                 try {
-                                    var forms = Array.from(document.querySelectorAll('form')).map(f => {
-                                        return {
-                                            id: f.id || '',
-                                            action: f.action || '',
-                                            inputs: Array.from(f.querySelectorAll('input')).map(i => ({ name: i.name, type: i.type, id: i.id }))
-                                        };
-                                    });
+                                    var title = document.title || '';
+                                    var headings = Array.from(document.querySelectorAll('h1, h2, h3')).map(h => h.innerText.trim()).filter(t => t.length > 0).slice(0, 5).join(' | ');
+                                    var inputs = Array.from(document.querySelectorAll('input, textarea, div[contenteditable="true"]')).map(i => i.placeholder || i.name || i.ariaLabel || i.tagName).slice(0, 8).join(', ');
+                                    var buttons = Array.from(document.querySelectorAll('button, div[role="button"], a')).map(b => b.innerText.trim()).filter(t => t.length > 0 && t.length < 30).slice(0, 8).join(', ');
+                                    var bodySnippet = (document.body ? document.body.innerText.replace(/\s+/g, ' ') : '').slice(0, 1000);
+
+                                    var domSummary = "Title: " + title + "\nHeadings: " + headings + "\nInputs: [" + inputs + "]\nButtons: [" + buttons + "]\nText Snippet: " + bodySnippet;
+
                                     if (window.AuraBridge) {
-                                        window.AuraBridge.onPageInspected(document.title, window.location.href, JSON.stringify(forms));
+                                        window.AuraBridge.onPageInspected(title, window.location.href, domSummary);
                                     }
                                 } catch(e) {}
                             })();
                         """.trimIndent()
-                        view?.evaluateJavascript(autoInspectorJs, null)
+                        view?.evaluateJavascript(scriptHelper, null)
                     }
                 }
 

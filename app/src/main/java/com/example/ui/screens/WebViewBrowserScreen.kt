@@ -315,6 +315,14 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
 
             item {
                 AssistChip(
+                    onClick = { viewModel.readCurrentPageContent() },
+                    label = { Text("📖 Read Page (পেজ পড়ুন)", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                )
+            }
+
+            item {
+                AssistChip(
                     onClick = { viewModel.navigateTo("https://m.facebook.com") },
                     label = { Text("Open Facebook", style = MaterialTheme.typography.labelSmall) },
                     leadingIcon = { Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(14.dp)) }
@@ -324,7 +332,7 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
             item {
                 AssistChip(
                     onClick = { viewModel.triggerFbAutoReply("ধন্যবাদ! আমি অরা এআই অটোমেটেড মেসেজ।") },
-                    label = { Text("💬 FB Auto-Reply", style = MaterialTheme.typography.labelSmall) },
+                    label = { Text("💬 FB Auto-Reply (টাইপ রিপ্লাই)", style = MaterialTheme.typography.labelSmall) },
                     leadingIcon = { Icon(Icons.Default.QuestionAnswer, contentDescription = null, modifier = Modifier.size(14.dp)) }
                 )
             }
@@ -332,7 +340,7 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
             item {
                 AssistChip(
                     onClick = { showPostDialog = true },
-                    label = { Text("📢 Group Post", style = MaterialTheme.typography.labelSmall) },
+                    label = { Text("📢 Group Post (টাইপ পোস্ট)", style = MaterialTheme.typography.labelSmall) },
                     leadingIcon = { Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(14.dp)) }
                 )
             }

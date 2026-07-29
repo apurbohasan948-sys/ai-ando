@@ -119,18 +119,25 @@ class GeminiAssistantService {
             )
         )
 
-        try {
-            val response = apiService.generateContent(apiKey, requestBody)
-            val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            if (jsonText != null) {
-                val parsed = adapter.fromJson(jsonText)
-                if (parsed != null) return@withContext parsed
+        val modelCandidates = listOf("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash")
+        var lastError = "Network error"
+
+        for (model in modelCandidates) {
+            try {
+                Log.d("GeminiService", "Attempting API call with model: $model")
+                val response = apiService.generateContent(model, apiKey, requestBody)
+                val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (jsonText != null) {
+                    val parsed = adapter.fromJson(jsonText)
+                    if (parsed != null) return@withContext parsed
+                }
+            } catch (e: Exception) {
+                Log.w("GeminiService", "Model $model failed: ${e.localizedMessage}")
+                lastError = e.localizedMessage ?: "HTTP error"
             }
-            return@withContext fallbackResponse(userInput, currentUrl, preferredLanguage, "Failed to parse AI response")
-        } catch (e: Exception) {
-            Log.e("GeminiService", "API call error", e)
-            return@withContext fallbackResponse(userInput, currentUrl, preferredLanguage, e.localizedMessage ?: "Network error")
         }
+
+        return@withContext fallbackResponse(userInput, currentUrl, preferredLanguage, lastError)
     }
 
     private fun fallbackResponse(
@@ -145,75 +152,103 @@ class GeminiAssistantService {
         return when {
             // Facebook specific automation triggers
             lower.contains("facebook") || lower.contains("fb") || lower.contains("ফেসবুক") -> {
+                val isOnFb = currentUrl.lowercase().contains("facebook.com")
                 when {
                     lower.contains("reply") || lower.contains("message") || lower.contains("মেসেজ") || lower.contains("রিপ্লাই") || lower.contains("chat") -> {
-                        val replyJs = """
-                            (function() {
-                                var inputBox = document.querySelector('div[contenteditable="true"][role="textbox"], textarea[name="body"], input[type="text"][name="body"], div[aria-label="Message"], div[aria-label="মেসেজ"]');
-                                var sendBtn = document.querySelector('div[aria-label="Send"], button[type="submit"], div[role="button"][aria-label="পাঠান"], div[aria-label="Press enter to send"]');
-                                if (inputBox) {
-                                    inputBox.focus();
-                                    document.execCommand('insertText', false, 'Hello! Aura AI automated response.');
-                                    if (sendBtn) { sendBtn.click(); }
-                                    AuraBridge.onDataExtracted('FB Message auto-reply sent.');
-                                } else {
-                                    AuraBridge.onDataExtracted('No open Facebook chat box found. Please open a chat first.');
-                                }
-                            })();
-                        """.trimIndent()
-                        AuraAiActionResponse(
-                            spokenResponse = if (isBn) "ফেসবুক মেসেজে অটো-রিপ্লাই স্ক্রিপ্ট রান করা হচ্ছে।" else "Executing Facebook message auto-reply script.",
-                            actionType = "EXECUTE_JS",
-                            jsCode = replyJs,
-                            extractedResultSummary = "FB Auto-reply triggered"
-                        )
+                        if (!isOnFb) {
+                            AuraAiActionResponse(
+                                spokenResponse = if (isBn) "ফেসবুক মেসেঞ্জারে যাওয়া হচ্ছে..." else "Navigating to Facebook messages...",
+                                actionType = "NAVIGATE",
+                                targetUrl = "https://m.facebook.com/messages",
+                                extractedResultSummary = "Navigating to Facebook messages"
+                            )
+                        } else {
+                            val replyJs = """
+                                (function() {
+                                    var inputBox = document.querySelector('div[contenteditable="true"][role="textbox"], textarea[name="body"], input[type="text"][name="body"], div[aria-label="Message"], div[aria-label="মেসেজ"]');
+                                    var sendBtn = document.querySelector('div[aria-label="Send"], button[type="submit"], div[role="button"][aria-label="পাঠান"], div[aria-label="Press enter to send"]');
+                                    if (inputBox) {
+                                        inputBox.focus();
+                                        document.execCommand('insertText', false, 'Hello! Aura AI automated response.');
+                                        if (sendBtn) { sendBtn.click(); }
+                                        AuraBridge.onDataExtracted('FB Message auto-reply sent.');
+                                    } else {
+                                        AuraBridge.onDataExtracted('No open Facebook chat box found. Please open a chat first.');
+                                    }
+                                })();
+                            """.trimIndent()
+                            AuraAiActionResponse(
+                                spokenResponse = if (isBn) "ফেসবুক মেসেজে অটো-রিপ্লাই দেওয়া হচ্ছে।" else "Executing Facebook message auto-reply.",
+                                actionType = "EXECUTE_JS",
+                                jsCode = replyJs,
+                                extractedResultSummary = "FB Auto-reply triggered"
+                            )
+                        }
                     }
                     lower.contains("post") || lower.contains("group") || lower.contains("পোস্ট") || lower.contains("গ্রুপ") -> {
-                        val postJs = """
-                            (function() {
-                                var postBox = document.querySelector('div[role="button"][aria-label*="Create"], div[role="button"][aria-label*="Write something"], div[role="button"][aria-label*="পোস্ট"]') || document.querySelector('div[contenteditable="true"]');
-                                if (postBox) {
-                                    postBox.click();
-                                    setTimeout(function() {
-                                        var editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
-                                        if (editor) {
-                                            editor.focus();
-                                            document.execCommand('insertText', false, 'Aura Assistant Automated Group Post');
-                                            AuraBridge.onDataExtracted('Post draft created in Facebook Group.');
-                                        }
-                                    }, 1000);
-                                } else {
-                                    AuraBridge.onDataExtracted('Open a Facebook group to auto post.');
-                                }
-                            })();
-                        """.trimIndent()
-                        AuraAiActionResponse(
-                            spokenResponse = if (isBn) "ফেসবুক গ্রুপে অটো-পোস্ট ড্রাফট তৈরি করা হচ্ছে।" else "Creating post draft in Facebook Group.",
-                            actionType = "EXECUTE_JS",
-                            jsCode = postJs,
-                            extractedResultSummary = "FB Group Auto-post initiated"
-                        )
+                        if (!isOnFb) {
+                            AuraAiActionResponse(
+                                spokenResponse = if (isBn) "ফেসবুক গ্রুপে নেভিগেট করা হচ্ছে..." else "Navigating to Facebook Groups...",
+                                actionType = "NAVIGATE",
+                                targetUrl = "https://m.facebook.com/groups",
+                                extractedResultSummary = "Navigating to Facebook Groups"
+                            )
+                        } else {
+                            val postJs = """
+                                (function() {
+                                    var postBox = document.querySelector('div[role="button"][aria-label*="Create"], div[role="button"][aria-label*="Write something"], div[role="button"][aria-label*="পোস্ট"]') || document.querySelector('div[contenteditable="true"]');
+                                    if (postBox) {
+                                        postBox.click();
+                                        setTimeout(function() {
+                                            var editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
+                                            if (editor) {
+                                                editor.focus();
+                                                document.execCommand('insertText', false, 'Aura Assistant Automated Group Post');
+                                                AuraBridge.onDataExtracted('Post draft created in Facebook Group.');
+                                            }
+                                        }, 1000);
+                                    } else {
+                                        AuraBridge.onDataExtracted('Open a Facebook group to auto post.');
+                                    }
+                                })();
+                            """.trimIndent()
+                            AuraAiActionResponse(
+                                spokenResponse = if (isBn) "ফেসবুক গ্রুপে পোস্ট ড্রাফট করা হচ্ছে।" else "Creating post draft in Facebook Group.",
+                                actionType = "EXECUTE_JS",
+                                jsCode = postJs,
+                                extractedResultSummary = "FB Group Auto-post initiated"
+                            )
+                        }
                     }
                     lower.contains("invite") || lower.contains("friend") || lower.contains("ইনভাইট") || lower.contains("বন্ধু") -> {
-                        val inviteJs = """
-                            (function() {
-                                var btns = Array.from(document.querySelectorAll('div[role="button"][aria-label*="Invite"], div[role="button"][aria-label*="ইনভাইট"], div[aria-label*="Add Friend"]'));
-                                if (btns.length === 0) {
-                                    btns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(function(e) { return /invite|আমন্ত্রণ|add friend/i.test(e.innerText); });
-                                }
-                                var count = 0;
-                                btns.slice(0, 5).forEach(function(btn, i) {
-                                    setTimeout(function() { btn.click(); count++; }, i * 1000);
-                                });
-                                AuraBridge.onDataExtracted('Auto invite triggered on ' + btns.length + ' profile/group buttons.');
-                            })();
-                        """.trimIndent()
-                        AuraAiActionResponse(
-                            spokenResponse = if (isBn) "ফেসবুক বন্ধুদের স্বয়ংক্রিয়ভাবে ইনভাইট পাঠানো হচ্ছে।" else "Sending auto-invites to Facebook friends.",
-                            actionType = "EXECUTE_JS",
-                            jsCode = inviteJs,
-                            extractedResultSummary = "FB Auto-invite executed"
-                        )
+                        if (!isOnFb) {
+                            AuraAiActionResponse(
+                                spokenResponse = if (isBn) "ফেসবুকে নেভিগেট করা হচ্ছে, ইনভাইট বাটনে স্বয়ংক্রিয়ভাবে ক্লিক করা হবে..." else "Navigating to Facebook to send friend invites...",
+                                actionType = "NAVIGATE",
+                                targetUrl = "https://m.facebook.com/friends",
+                                extractedResultSummary = "Navigating to Facebook friends/invites page"
+                            )
+                        } else {
+                            val inviteJs = """
+                                (function() {
+                                    var btns = Array.from(document.querySelectorAll('div[role="button"][aria-label*="Invite"], div[role="button"][aria-label*="ইনভাইট"], div[aria-label*="Add Friend"], div[aria-label*="যোগ করুন"]'));
+                                    if (btns.length === 0) {
+                                        btns = Array.from(document.querySelectorAll('button, div[role="button"]')).filter(function(e) { return /invite|আমন্ত্রণ|add friend|ফ্রেন্ড তৈরি/i.test(e.innerText); });
+                                    }
+                                    var count = 0;
+                                    btns.slice(0, 5).forEach(function(btn, i) {
+                                        setTimeout(function() { btn.click(); count++; }, i * 1000);
+                                    });
+                                    AuraBridge.onDataExtracted('Auto invite triggered on ' + btns.length + ' profile/group buttons.');
+                                })();
+                            """.trimIndent()
+                            AuraAiActionResponse(
+                                spokenResponse = if (isBn) "ফেসবুক ইনভাইট বাটনে ক্লিক পাঠানো হচ্ছে।" else "Sending auto-invites on Facebook.",
+                                actionType = "EXECUTE_JS",
+                                jsCode = inviteJs,
+                                extractedResultSummary = "FB Auto-invite executed"
+                            )
+                        }
                     }
                     else -> {
                         AuraAiActionResponse(
@@ -224,6 +259,24 @@ class GeminiAssistantService {
                         )
                     }
                 }
+            }
+            // Dynamic link creation / Website extraction triggers
+            lower.contains("link") || lower.contains("লিঙ্ক") || lower.contains("ইউআরএল") || lower.contains("url") -> {
+                val linkJs = """
+                    (function() {
+                        var pageUrl = window.location.href;
+                        var title = document.title;
+                        var metaDesc = document.querySelector('meta[name="description"]')?.content || '';
+                        var summary = "URL: " + pageUrl + "\nTitle: " + title + "\nDescription: " + metaDesc;
+                        AuraBridge.onDataExtracted(summary);
+                    })();
+                """.trimIndent()
+                AuraAiActionResponse(
+                    spokenResponse = if (isBn) "বর্তমান পেজের লিঙ্ক ও তথ্য সংগ্রহ করা হয়েছে।" else "Extracted page URL and metadata link.",
+                    actionType = "EXECUTE_JS",
+                    jsCode = linkJs,
+                    extractedResultSummary = "Web link extracted"
+                )
             }
             // General site navigation triggers
             lower.contains("goto") || lower.contains("open") || lower.contains("go to") || lower.contains("যাও") || lower.contains("ওপেন") || lower.contains(".com") || lower.contains(".org") || lower.contains(".net") || lower.startsWith("http") -> {
