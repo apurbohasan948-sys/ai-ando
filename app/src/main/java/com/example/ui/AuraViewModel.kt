@@ -11,8 +11,10 @@ import com.example.data.db.AppDatabase
 import com.example.data.db.CredentialEntity
 import com.example.data.db.MemoryRuleEntity
 import com.example.data.db.SecurityManager
+import com.example.data.db.TaskQueueEntity
 import com.example.data.memory.MemoryStore
 import com.example.data.memory.RoomMemoryStore
+import com.example.data.queue.TaskQueueManager
 import com.example.voice.SpeechNlpManager
 import com.example.webview.WebViewBridge
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +45,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getDatabase(application)
     private val credentialDao = db.credentialDao()
     private val memoryStore: MemoryStore = RoomMemoryStore(db.memoryRuleDao())
+    val taskQueueManager = TaskQueueManager(db.taskQueueDao())
+
+    val taskQueueList: StateFlow<List<TaskQueueEntity>> = taskQueueManager.allTasks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val geminiService = GeminiAssistantService()
     val speechManager = SpeechNlpManager(application)
@@ -147,7 +153,10 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
                     if (!linkLine.isNullOrBlank()) _lastVideoLink.value = linkLine
                     logEvent("VIDEO_EXTRACT", "Captured video title: $titleLine | link: $linkLine")
                 }
-                logEvent("WEBVIEW_BRIDGE", "Extracted page data (${event.content.length} chars).")
+                viewModelScope.launch {
+                    taskQueueManager.recordPageProcessed(_currentUrl.value, _pageTitle.value, event.content)
+                }
+                logEvent("WEBVIEW_BRIDGE", "Extracted page data (${event.content.length} chars). Persisted in TaskQueueManager.")
                 addChatMessage("AURA", "Data extracted: ${event.content.take(150)}...")
             }
         }
@@ -226,6 +235,23 @@ class AuraViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            // Task Queue Persistence & Deduplication Check
+            val isBn = lang == "bn"
+            if (input.contains("extract", ignoreCase = true) || input.contains("video", ignoreCase = true) || input.contains("download", ignoreCase = true) || input.contains("ডাউনলোড", ignoreCase = true)) {
+                taskQueueManager.enqueueSequence(
+                    targetUrl = _currentUrl.value,
+                    taskType = "EXTRACT_AND_POST",
+                    steps = listOf("NAVIGATE", "EXTRACT_MEDIA", "SUBMIT_ADMIN")
+                )
+                if (taskQueueManager.isPageProcessed(_currentUrl.value)) {
+                    val cached = taskQueueManager.getProcessedPage(_currentUrl.value)
+                    val msg = if (isBn) "এই পেজটি ইতিমধ্যে প্রসেস করা হয়েছে! পুনঃপ্রসেসিং এড়াতে সেভ করা ডাটা ব্যবহার করা হচ্ছে: ${cached?.extractedData?.take(100)}..." 
+                              else "Page already processed! Reusing persisted data to avoid redundant re-processing: ${cached?.extractedData?.take(100)}..."
+                    logEvent("TASK_QUEUE", "Skipped redundant processing for URL: ${_currentUrl.value}")
+                    addChatMessage("AURA", msg)
+                }
+            }
+
             val credentials = credentialDao.getCredentialsForDomain(_currentUrl.value)
             val rules = memoryStore.getRulesForDomain(_currentUrl.value)
 

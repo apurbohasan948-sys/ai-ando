@@ -58,7 +58,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,13 +84,87 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
     val selectedLanguage by viewModel.selectedLanguage.collectAsState()
 
     val isAutoAgentActive by viewModel.isAutoAgentActive.collectAsState()
+    val taskQueueList by viewModel.taskQueueList.collectAsState()
 
     var urlInputText by remember(currentUrl) { mutableStateOf(currentUrl) }
     var promptInputText by remember { mutableStateOf("") }
     var isChatLogsExpanded by remember { mutableStateOf(false) }
 
+    val coroutineScope = rememberCoroutineScope()
     var showPostDialog by remember { mutableStateOf(false) }
     var postContentInput by remember { mutableStateOf("") }
+    var showTaskQueueDialog by remember { mutableStateOf(false) }
+
+    if (showTaskQueueDialog) {
+        AlertDialog(
+            onDismissRequest = { showTaskQueueDialog = false },
+            title = { Text("📋 Task Queue Manager (টাস্ক কিউ)") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Persisted multi-step task sequences & processed URLs (${taskQueueList.size} tasks):",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (taskQueueList.isEmpty()) {
+                        Text(
+                            text = "No pending or past task sequences.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    } else {
+                        LazyColumn(modifier = Modifier.height(200.dp)) {
+                            items(taskQueueList) { task ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            text = "${task.taskType} - ${task.status}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (task.status == "COMPLETED") Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "URL: ${task.targetUrl}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "Steps: ${task.stepsJson}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                        if (task.resultSummary.isNotBlank()) {
+                                            Text(
+                                                text = "Result: ${task.resultSummary}",
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showTaskQueueDialog = false }) {
+                    Text("Close")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { coroutineScope.launch { viewModel.taskQueueManager.clearQueue() } }) {
+                    Text("Clear All Queue")
+                }
+            }
+        )
+    }
 
     if (showPostDialog) {
         AlertDialog(
@@ -310,6 +386,14 @@ fun WebViewBrowserScreen(viewModel: AuraViewModel) {
                             tint = if (isAutoAgentActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
                     }
+                )
+            }
+
+            item {
+                AssistChip(
+                    onClick = { showTaskQueueDialog = true },
+                    label = { Text("📋 Task Queue (${taskQueueList.size})", style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
                 )
             }
 

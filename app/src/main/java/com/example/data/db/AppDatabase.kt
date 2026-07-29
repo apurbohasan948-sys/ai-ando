@@ -6,13 +6,14 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [CredentialEntity::class, MemoryRuleEntity::class],
-    version = 1,
+    entities = [CredentialEntity::class, MemoryRuleEntity::class, TaskQueueEntity::class, ProcessedPageEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun credentialDao(): CredentialDao
     abstract fun memoryRuleDao(): MemoryRuleDao
+    abstract fun taskQueueDao(): TaskQueueDao
 
     companion object {
         @Volatile
@@ -24,7 +25,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "aura_assistant_db"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }
